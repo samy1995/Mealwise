@@ -1,0 +1,7 @@
+{
+  "name": "Mealwise: Eat Smarter, Not Stricter",
+  "description": "A nutrition-aware decision support app that uses AI to detect food from photos, suggest recipes from ingredients, and provide behavior-focused monthly reports.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

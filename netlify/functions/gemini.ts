@@ -8,20 +8,13 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
-function parseBase64(input: string) {
-  if (!input) return { mimeType: "image/jpeg", data: "" };
-  const m = input.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
-  if (m) return { mimeType: m[1], data: m[2] };
-  return { mimeType: "image/jpeg", data: input };
-}
-
 export const handler = async (event: any) => {
   try {
     // Only accept POST requests
     if (event.httpMethod !== "POST") {
       return {
         statusCode: 405,
-        body: JSON.stringify({ ok: false, error: "Method not allowed" })
+        body: JSON.stringify({ ok: false, error: "Method not allowed" }),
       };
     }
 
@@ -32,7 +25,7 @@ export const handler = async (event: any) => {
     if (!action) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ ok: false, error: "Action is required" })
+        body: JSON.stringify({ ok: false, error: "Action is required" }),
       };
     }
 
@@ -59,21 +52,18 @@ export const handler = async (event: any) => {
         result = await generateFoodImage(payload.prompt);
         break;
       case "analyzeMonthlyBehavior":
-        result = await analyzeMonthlyBehavior(
-          payload.meals,
-          payload.lastActionPlan
-        );
+        result = await analyzeMonthlyBehavior(payload.meals, payload.lastActionPlan);
         break;
       default:
         return {
           statusCode: 400,
-          body: JSON.stringify({ ok: false, error: `Unknown action: ${action}` })
+          body: JSON.stringify({ ok: false, error: `Unknown action: ${action}` }),
         };
     }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ ok: true, data: result })
+      body: JSON.stringify({ ok: true, data: result }),
     };
   } catch (error: any) {
     console.error(`[Gemini Function] Error:`, error);
@@ -81,24 +71,24 @@ export const handler = async (event: any) => {
       statusCode: 500,
       body: JSON.stringify({
         ok: false,
-        error: error.message || "Internal server error"
-      })
+        error: error.message || "Internal server error",
+      }),
     };
   }
 };
 
 async function detectFood(base64Image: string): Promise<any> {
-  const { mimeType, data } = parseBase64(base64Image);
-
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        { inlineData: { data, mimeType } },
+        { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
         {
-          text: "Analyze this meal photo. Identify all food items, their estimated portion sizes, and detailed nutrition (calories, protein, fat, carbs, fiber, sugar). Provide confidence scores for each detection. Return as JSON."
-        }
-      ]
+          text:
+            "Analyze this meal photo. Identify all food items, their estimated portion sizes, and detailed nutrition " +
+            "(calories, protein, fat, carbs, fiber, sugar). Provide confidence scores for each detection. Return as JSON.",
+        },
+      ],
     },
     config: {
       responseMimeType: "application/json",
@@ -118,7 +108,7 @@ async function detectFood(base64Image: string): Promise<any> {
                 carbs: { type: Type.NUMBER },
                 fiber: { type: Type.NUMBER },
                 sugar: { type: Type.NUMBER },
-                confidence: { type: Type.NUMBER }
+                confidence: { type: Type.NUMBER },
               },
               required: [
                 "name",
@@ -129,9 +119,9 @@ async function detectFood(base64Image: string): Promise<any> {
                 "carbs",
                 "fiber",
                 "sugar",
-                "confidence"
-              ]
-            }
+                "confidence",
+              ],
+            },
           },
           summary: {
             type: Type.OBJECT,
@@ -141,29 +131,26 @@ async function detectFood(base64Image: string): Promise<any> {
               fat: { type: Type.NUMBER },
               carbs: { type: Type.NUMBER },
               fiber: { type: Type.NUMBER },
-              sugar: { type: Type.NUMBER }
+              sugar: { type: Type.NUMBER },
             },
-            required: [
-              "calories",
-              "protein",
-              "fat",
-              "carbs",
-              "fiber",
-              "sugar"
-            ]
-          }
+            required: ["calories", "protein", "fat", "carbs", "fiber", "sugar"],
+          },
         },
-        required: ["foods", "summary"]
-      }
-    }
+        required: ["foods", "summary"],
+      },
+    },
   });
+
   return JSON.parse((response as any).text || "{}");
 }
 
 async function calculateNutritionForManualItems(text: string): Promise<any> {
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Calculate detailed nutrition for these manually entered ingredients: "${text}". Provide estimated quantity and per-item nutrition (calories, protein, fat, carbs, fiber, sugar). Set confidence to 1.0. Return as a JSON array of FoodItem objects.`,
+    contents:
+      `Calculate detailed nutrition for these manually entered ingredients: "${text}". ` +
+      "Provide estimated quantity and per-item nutrition (calories, protein, fat, carbs, fiber, sugar). " +
+      "Set confidence to 1.0. Return as a JSON array of FoodItem objects.",
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -179,7 +166,7 @@ async function calculateNutritionForManualItems(text: string): Promise<any> {
             carbs: { type: Type.NUMBER },
             fiber: { type: Type.NUMBER },
             sugar: { type: Type.NUMBER },
-            confidence: { type: Type.NUMBER }
+            confidence: { type: Type.NUMBER },
           },
           required: [
             "name",
@@ -190,36 +177,38 @@ async function calculateNutritionForManualItems(text: string): Promise<any> {
             "carbs",
             "fiber",
             "sugar",
-            "confidence"
-          ]
-        }
-      }
-    }
+            "confidence",
+          ],
+        },
+      },
+    },
   });
+
   return JSON.parse((response as any).text || "[]");
 }
 
 async function detectFridgeIngredients(base64Image: string): Promise<any> {
-  const { mimeType, data } = parseBase64(base64Image);
-
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        { inlineData: { data, mimeType } },
+        { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
         {
-          text: "Identify all visible raw ingredients in this fridge or pantry photo. Return a simple JSON array of strings containing just the ingredient names."
-        }
-      ]
+          text:
+            "Identify all visible raw ingredients in this fridge or pantry photo. " +
+            "Return a simple JSON array of strings containing just the ingredient names.",
+        },
+      ],
     },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.ARRAY,
-        items: { type: Type.STRING }
-      }
-    }
+        items: { type: Type.STRING },
+      },
+    },
   });
+
   return JSON.parse((response as any).text || "[]");
 }
 
@@ -236,12 +225,13 @@ async function generateRecipes(
 
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Generate 3 healthy recipes using some or all of these ingredients: ${ingredients.join(", ")}.
-      ${dietPrompt}
-      CRITICAL: You MUST strictly exclude the following allergens: ${allergenList}.
-      If available ingredients conflict with these restrictions, suggest safe substitutions.
-      Include cooking time, difficulty, step-by-step instructions with nutritional highlights for each step, drink pairings, and nutrition info per ingredient.
-      Return as JSON array of recipes.`,
+    contents:
+      `Generate 3 healthy recipes using some or all of these ingredients: ${ingredients.join(", ")}.\n` +
+      `${dietPrompt}\n` +
+      `CRITICAL: You MUST strictly exclude the following allergens: ${allergenList}.\n` +
+      "If available ingredients conflict with these restrictions, suggest safe substitutions.\n" +
+      "Include cooking time, difficulty, step-by-step instructions with nutritional highlights for each step, " +
+      "drink pairings, and nutrition info per ingredient. Return as JSON array of recipes.",
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -266,9 +256,9 @@ async function generateRecipes(
                   carbs: { type: Type.NUMBER },
                   fiber: { type: Type.NUMBER },
                   sugar: { type: Type.NUMBER },
-                  confidence: { type: Type.NUMBER }
-                }
-              }
+                  confidence: { type: Type.NUMBER },
+                },
+              },
             },
             instructions: {
               type: Type.ARRAY,
@@ -277,29 +267,30 @@ async function generateRecipes(
                 properties: {
                   instruction: { type: Type.STRING },
                   nutritionalHighlight: { type: Type.STRING },
-                  stepCalories: { type: Type.NUMBER }
-                }
-              }
+                  stepCalories: { type: Type.NUMBER },
+                },
+              },
             },
-            optionalIngredients: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            drinkPairings: { type: Type.ARRAY, items: { type: Type.STRING } }
-          }
-        }
-      }
-    }
+            optionalIngredients: { type: Type.ARRAY, items: { type: Type.STRING } },
+            drinkPairings: { type: Type.ARRAY, items: { type: Type.STRING } },
+          },
+        },
+      },
+    },
   });
 
   const recipes: any[] = JSON.parse((response as any).text || "[]");
+
+  // IMPORTANT: Always generate a STABLE image for cook module recipes:
+  // - Prefer Gemini inline image (data URL) so it never changes later.
+  // - If Gemini image generation fails, return a deterministic food placeholder (still food-themed).
   return Promise.all(
     recipes.map(async (r) => {
       const imgUrl = await generateFoodImage(r.name);
       return {
         ...r,
         id: Math.random().toString(36).substr(2, 9),
-        imageUrl: imgUrl
+        imageUrl: imgUrl,
       };
     })
   );
@@ -315,25 +306,24 @@ async function generateFoodImage(prompt: string): Promise<string> {
         parts: [
           {
             text:
-              `Generate ONLY a realistic food photo of: ${safePrompt}. ` +
-              `No scenery, no nature, no people, no text, no logos. Neutral background.`
-          }
-        ]
+              `Generate ONLY a realistic studio food photo of: ${safePrompt}. ` +
+              "No scenery, no nature, no people, no text, no logos. Neutral background. Close-up food framing.",
+          },
+        ],
       },
       config: {
-        // Force the model to try returning an IMAGE part
+        // Force image output
         responseModalities: ["IMAGE"],
-        imageConfig: { aspectRatio: "1:1" }
-      } as any
+        imageConfig: { aspectRatio: "1:1" },
+      } as any,
     });
 
     const parts = (response as any)?.candidates?.[0]?.content?.parts ?? [];
-
     for (const part of parts) {
-      const inline = part?.inlineData;
+      const inline = (part as any)?.inlineData;
       const b64 = inline?.data;
+
       if (typeof b64 === "string" && b64.length > 1000) {
-        // Basic sanity check: make sure it looks like base64
         const base64LooksValid = /^[A-Za-z0-9+/=\s]+$/.test(b64);
         if (base64LooksValid) {
           const mime = inline?.mimeType || "image/png";
@@ -347,32 +337,35 @@ async function generateFoodImage(prompt: string): Promise<string> {
     console.error("[Gemini Function] Image generation failed:", e);
   }
 
-  // Reliable food fallback (NOT nature)
-  const cacheBuster = Date.now();
-  return `https://source.unsplash.com/featured/400x400?food,meal,recipe,${encodeURIComponent(
-    safePrompt
-  )}&sig=${cacheBuster}`;
+  // Stable, food-specific fallback (non-random). If remote is blocked, UI should show a placeholder.
+  // This avoids picsum nature randomness and avoids cache-busters that change on refresh.
+  return `https://placehold.co/512x512/png?text=${encodeURIComponent(
+    `Mealwise: ${safePrompt}`
+  )}`;
 }
 
 async function analyzeMonthlyBehavior(meals: any[], lastActionPlan?: string): Promise<any> {
-  const recentMeals = meals.slice(0, 30).map((m) => ({
+  const recentMeals = (meals || []).slice(0, 30).map((m) => ({
     date: m.date,
     type: m.type,
     source: m.source,
     restaurant: m.restaurantName,
     foods: m.foods?.map((f: any) => f.name).join(", "),
-    totals: m.totals
+    totals: m.totals,
   }));
 
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Analyze these meal logs: ${JSON.stringify(recentMeals)}. 
-        You are a non-judgmental nutrition architect. 
-        1) behaviorSummary: 1-2 sentence high-level behavioral insight (e.g. "You tend to cook more mid-week and order out on weekends"). Avoid starting with calories.
-        2) patterns: 2-3 specific behavioral bullet points (plain language). Examples: "Protein dips on days you order lunch", "Late meals tend to be heavier".
-        3) actionPlan: Exactly 1 simple, actionable one-liner suggestion. 
-           CRITICAL: The action plan MUST be different from the previous one: "${lastActionPlan || "none"}". Choose a fresh recommendation.
-        Also return macroDistributions, sourceDistributions, trends, and consistencyScore. Return as JSON.`,
+    contents:
+      `Analyze these meal logs: ${JSON.stringify(recentMeals)}.\n` +
+      "You are a non-judgmental nutrition architect.\n" +
+      "Return JSON with:\n" +
+      "1) behaviorSummary: 1-2 sentence high-level behavioral insight. Avoid starting with calories.\n" +
+      "2) patterns: 2-3 plain-language pattern bullets.\n" +
+      `3) actionPlan: Exactly 1 simple, actionable one-liner. MUST be different from previous: "${lastActionPlan || "none"}".\n` +
+      "4) positiveQuotes: 2-3 short, upbeat foodie-friendly lines (no judgment, no medical claims).\n" +
+      "Also include macroDistribution, sourceDistribution, trends, consistencyScore.\n" +
+      "No prescriptive or medical language. No strict targets. Keep it encouraging.\n",
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -381,22 +374,26 @@ async function analyzeMonthlyBehavior(meals: any[], lastActionPlan?: string): Pr
           behaviorSummary: { type: Type.STRING },
           patterns: { type: Type.ARRAY, items: { type: Type.STRING } },
           actionPlan: { type: Type.STRING },
+
+          // NEW: bring back positive quotes in Memory module
+          positiveQuotes: { type: Type.ARRAY, items: { type: Type.STRING } },
+
           macroDistribution: {
             type: Type.OBJECT,
             properties: {
               protein: { type: Type.NUMBER },
               fat: { type: Type.NUMBER },
-              carbs: { type: Type.NUMBER }
+              carbs: { type: Type.NUMBER },
             },
-            required: ["protein", "fat", "carbs"]
+            required: ["protein", "fat", "carbs"],
           },
           sourceDistribution: {
             type: Type.OBJECT,
             properties: {
               home: { type: Type.NUMBER },
-              ordered: { type: Type.NUMBER }
+              ordered: { type: Type.NUMBER },
             },
-            required: ["home", "ordered"]
+            required: ["home", "ordered"],
           },
           trends: {
             type: Type.ARRAY,
@@ -405,24 +402,25 @@ async function analyzeMonthlyBehavior(meals: any[], lastActionPlan?: string): Pr
               properties: {
                 label: { type: Type.STRING },
                 value: { type: Type.NUMBER },
-                direction: { type: Type.STRING }
+                direction: { type: Type.STRING },
               },
-              required: ["label", "value", "direction"]
-            }
+              required: ["label", "value", "direction"],
+            },
           },
-          consistencyScore: { type: Type.NUMBER }
+          consistencyScore: { type: Type.NUMBER },
         },
         required: [
           "behaviorSummary",
           "patterns",
           "actionPlan",
+          "positiveQuotes",
           "macroDistribution",
           "sourceDistribution",
           "trends",
-          "consistencyScore"
-        ]
-      }
-    }
+          "consistencyScore",
+        ],
+      },
+    },
   });
 
   return JSON.parse((response as any).text || "{}");

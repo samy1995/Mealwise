@@ -306,44 +306,52 @@ async function generateRecipes(
 }
 
 async function generateFoodImage(prompt: string): Promise<string> {
-  const safePrompt = (prompt || "").trim() || "a healthy meal";
+  const safePrompt = (prompt || "").trim() || "food";
 
   try {
-    // IMPORTANT: force an IMAGE response (otherwise you can get text-only)
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",
       contents: {
         parts: [
           {
-            text: `Generate ONLY a realistic studio food photo of: ${safePrompt}. 
-No nature, no scenery, no people, no text, no logos. White/neutral background.`
+            text:
+              `Generate ONLY a realistic food photo of: ${safePrompt}. ` +
+              `No scenery, no nature, no people, no text, no logos. Neutral background.`
           }
         ]
       },
       config: {
-        // This is the missing piece in many setups: explicitly request IMAGE output
+        // Force the model to try returning an IMAGE part
         responseModalities: ["IMAGE"],
         imageConfig: { aspectRatio: "1:1" }
       } as any
     });
 
-    const parts = (response as any)?.candidates?.[0]?.content?.parts || [];
+    const parts = (response as any)?.candidates?.[0]?.content?.parts ?? [];
 
     for (const part of parts) {
       const inline = part?.inlineData;
-      if (inline?.data) {
-        const mime = inline.mimeType || "image/png";
-        return `data:${mime};base64,${inline.data}`;
+      const b64 = inline?.data;
+      if (typeof b64 === "string" && b64.length > 1000) {
+        // Basic sanity check: make sure it looks like base64
+        const base64LooksValid = /^[A-Za-z0-9+/=\s]+$/.test(b64);
+        if (base64LooksValid) {
+          const mime = inline?.mimeType || "image/png";
+          return `data:${mime};base64,${b64.replace(/\s/g, "")}`;
+        }
       }
     }
 
-    console.warn("[Gemini Function] No inline image returned. Falling back to a food image URL.");
+    console.warn("[Gemini Function] No valid inline image returned for prompt:", safePrompt);
   } catch (e) {
     console.error("[Gemini Function] Image generation failed:", e);
   }
 
-  // Food-only fallback (so you don't get random nature pics)
-  return `https://source.unsplash.com/400x400/?food,meal,${encodeURIComponent(safePrompt)}`;
+  // Reliable food fallback (NOT nature)
+  const cacheBuster = Date.now();
+  return `https://source.unsplash.com/featured/400x400?food,meal,recipe,${encodeURIComponent(
+    safePrompt
+  )}&sig=${cacheBuster}`;
 }
 
 async function analyzeMonthlyBehavior(meals: any[], lastActionPlan?: string): Promise<any> {

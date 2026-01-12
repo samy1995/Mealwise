@@ -312,7 +312,7 @@ async function generateFoodImage(prompt: string): Promise<string> {
       contents: {
         parts: [
           {
-            text: `A professional, appetizing studio photo of ${prompt}. Realistic food photography.`
+            text: `A realistic, appetizing studio food photograph of ${prompt}. Plate centered, food only. No nature, no scenery, no landscapes. Clean background.`
           }
         ]
       },
@@ -320,15 +320,28 @@ async function generateFoodImage(prompt: string): Promise<string> {
         imageConfig: { aspectRatio: "1:1" }
       }
     });
+
+    // DEBUG: See what the model actually returned in Netlify logs
+    console.log("[Gemini Function] generateFoodImage raw response:", JSON.stringify(response, null, 2));
+
+    // Try to extract inline image bytes
     for (const part of (response as any).candidates?.[0]?.content?.parts || []) {
-      if ((part as any).inlineData) {
-        return `data:image/png;base64,${(part as any).inlineData.data}`;
+      const inline = (part as any).inlineData;
+      if (inline?.data) {
+        // Prefer returned mimeType if present, else assume png
+        const mime = inline.mimeType || "image/png";
+        return `data:${mime};base64,${inline.data}`;
       }
     }
+
+    // Some responses may return text only. Log that clearly.
+    console.warn("[Gemini Function] No inline image data returned. Falling back to food image URL.");
   } catch (e) {
     console.error("[Gemini Function] Image generation failed:", e);
   }
-  return "https://picsum.photos/400/400";
+
+  // Food-specific fallback (NOT random nature pics)
+  return `https://source.unsplash.com/400x400/?food,${encodeURIComponent(prompt)}`;
 }
 
 async function analyzeMonthlyBehavior(meals: any[], lastActionPlan?: string): Promise<any> {

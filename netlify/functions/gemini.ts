@@ -306,42 +306,44 @@ async function generateRecipes(
 }
 
 async function generateFoodImage(prompt: string): Promise<string> {
+  const safePrompt = (prompt || "").trim() || "a healthy meal";
+
   try {
+    // IMPORTANT: force an IMAGE response (otherwise you can get text-only)
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-image",
       contents: {
         parts: [
           {
-            text: `A realistic, appetizing studio food photograph of ${prompt}. Plate centered, food only. No nature, no scenery, no landscapes. Clean background.`
+            text: `Generate ONLY a realistic studio food photo of: ${safePrompt}. 
+No nature, no scenery, no people, no text, no logos. White/neutral background.`
           }
         ]
       },
       config: {
+        // This is the missing piece in many setups: explicitly request IMAGE output
+        responseModalities: ["IMAGE"],
         imageConfig: { aspectRatio: "1:1" }
-      }
+      } as any
     });
 
-    // DEBUG: See what the model actually returned in Netlify logs
-    console.log("[Gemini Function] generateFoodImage raw response:", JSON.stringify(response, null, 2));
+    const parts = (response as any)?.candidates?.[0]?.content?.parts || [];
 
-    // Try to extract inline image bytes
-    for (const part of (response as any).candidates?.[0]?.content?.parts || []) {
-      const inline = (part as any).inlineData;
+    for (const part of parts) {
+      const inline = part?.inlineData;
       if (inline?.data) {
-        // Prefer returned mimeType if present, else assume png
         const mime = inline.mimeType || "image/png";
         return `data:${mime};base64,${inline.data}`;
       }
     }
 
-    // Some responses may return text only. Log that clearly.
-    console.warn("[Gemini Function] No inline image data returned. Falling back to food image URL.");
+    console.warn("[Gemini Function] No inline image returned. Falling back to a food image URL.");
   } catch (e) {
     console.error("[Gemini Function] Image generation failed:", e);
   }
 
-  // Food-specific fallback (NOT random nature pics)
-  return `https://source.unsplash.com/400x400/?food,${encodeURIComponent(prompt)}`;
+  // Food-only fallback (so you don't get random nature pics)
+  return `https://source.unsplash.com/400x400/?food,meal,${encodeURIComponent(safePrompt)}`;
 }
 
 async function analyzeMonthlyBehavior(meals: any[], lastActionPlan?: string): Promise<any> {

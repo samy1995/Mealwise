@@ -8,6 +8,13 @@ if (!apiKey) {
 
 const ai = new GoogleGenAI({ apiKey });
 
+function parseBase64(input: string) {
+  if (!input) return { mimeType: "image/jpeg", data: "" };
+  const m = input.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.*)$/);
+  if (m) return { mimeType: m[1], data: m[2] };
+  return { mimeType: "image/jpeg", data: input };
+}
+
 export const handler = async (event: any) => {
   try {
     // Only accept POST requests
@@ -81,11 +88,13 @@ export const handler = async (event: any) => {
 };
 
 async function detectFood(base64Image: string): Promise<any> {
+  const { mimeType, data } = parseBase64(base64Image);
+
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
+        { inlineData: { data, mimeType } },
         {
           text: "Analyze this meal photo. Identify all food items, their estimated portion sizes, and detailed nutrition (calories, protein, fat, carbs, fiber, sugar). Provide confidence scores for each detection. Return as JSON."
         }
@@ -148,7 +157,7 @@ async function detectFood(base64Image: string): Promise<any> {
       }
     }
   });
-  return JSON.parse(response.text || "{}");
+  return JSON.parse((response as any).text || "{}");
 }
 
 async function calculateNutritionForManualItems(text: string): Promise<any> {
@@ -187,15 +196,17 @@ async function calculateNutritionForManualItems(text: string): Promise<any> {
       }
     }
   });
-  return JSON.parse(response.text || "[]");
+  return JSON.parse((response as any).text || "[]");
 }
 
 async function detectFridgeIngredients(base64Image: string): Promise<any> {
+  const { mimeType, data } = parseBase64(base64Image);
+
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        { inlineData: { data: base64Image, mimeType: "image/jpeg" } },
+        { inlineData: { data, mimeType } },
         {
           text: "Identify all visible raw ingredients in this fridge or pantry photo. Return a simple JSON array of strings containing just the ingredient names."
         }
@@ -209,7 +220,7 @@ async function detectFridgeIngredients(base64Image: string): Promise<any> {
       }
     }
   });
-  return JSON.parse(response.text || "[]");
+  return JSON.parse((response as any).text || "[]");
 }
 
 async function generateRecipes(
@@ -217,8 +228,7 @@ async function generateRecipes(
   dietPreference: string = "no_preference",
   allergens: string[] = []
 ): Promise<any> {
-  const allergenList =
-    allergens.length > 0 ? allergens.join(", ") : "none";
+  const allergenList = allergens.length > 0 ? allergens.join(", ") : "none";
   const dietPrompt =
     dietPreference !== "no_preference"
       ? `The user strictly follows a ${dietPreference} diet.`
@@ -282,7 +292,7 @@ async function generateRecipes(
     }
   });
 
-  const recipes: any[] = JSON.parse(response.text || "[]");
+  const recipes: any[] = JSON.parse((response as any).text || "[]");
   return Promise.all(
     recipes.map(async (r) => {
       const imgUrl = await generateFoodImage(r.name);
@@ -310,7 +320,7 @@ async function generateFoodImage(prompt: string): Promise<string> {
         imageConfig: { aspectRatio: "1:1" }
       }
     });
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
+    for (const part of (response as any).candidates?.[0]?.content?.parts || []) {
       if ((part as any).inlineData) {
         return `data:image/png;base64,${(part as any).inlineData.data}`;
       }
@@ -321,10 +331,7 @@ async function generateFoodImage(prompt: string): Promise<string> {
   return "https://picsum.photos/400/400";
 }
 
-async function analyzeMonthlyBehavior(
-  meals: any[],
-  lastActionPlan?: string
-): Promise<any> {
+async function analyzeMonthlyBehavior(meals: any[], lastActionPlan?: string): Promise<any> {
   const recentMeals = meals.slice(0, 30).map((m) => ({
     date: m.date,
     type: m.type,
@@ -394,5 +401,6 @@ async function analyzeMonthlyBehavior(
       }
     }
   });
-  return JSON.parse(response.text || "{}");
+
+  return JSON.parse((response as any).text || "{}");
 }
